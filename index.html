@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cut & Keep — Curated Recipes</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🍳</span>
+      <div>
+        <h1>Cut &amp; Keep</h1>
+        <p class="tagline">~500 kcal · ~50g protein · no beef · bulk-friendly</p>
+      </div>
+    </div>
+    <div class="import">
+      <input type="url" id="importUrl" placeholder="Paste a recipe URL to parse & curate…" />
+      <button id="importBtn">Import</button>
+    </div>
+    <div class="count" id="resultCount"></div>
+  </header>
+
+  <div class="import-result" id="importResult" hidden></div>
+
+  <div class="layout">
+    <aside class="filters">
+      <div class="filter-group">
+        <label class="filter-label">Search</label>
+        <input type="search" id="search" placeholder="chicken, lentil, breakfast…" />
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Calories per portion: <span id="kcalVal" class="val"></span></label>
+        <input type="range" id="kcalMax" min="300" max="650" step="10" value="650" />
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Min protein: <span id="proteinVal" class="val"></span></label>
+        <input type="range" id="proteinMin" min="30" max="55" step="1" value="30" />
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Max active time: <span id="timeVal" class="val"></span></label>
+        <input type="range" id="timeMax" min="10" max="30" step="5" value="30" />
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Protein source</label>
+        <div class="chips" id="proteinChips"></div>
+      </div>
+
+      <div class="filter-group">
+        <label class="toggle">
+          <input type="checkbox" id="bulkOnly" />
+          <span>Bulk-friendly only (keeps 3+ days)</span>
+        </label>
+      </div>
+
+      <button id="reset" class="reset-btn">Reset filters</button>
+    </aside>
+
+    <main class="grid" id="grid"></main>
+  </div>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card" id="modalCard"></div>
+  </div>
+
+  <script src="recipes.js"></script>
+  <script src="overrides.js"></script>
+  <script src="nutrition.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
