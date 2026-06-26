@@ -11,7 +11,24 @@ const state = {
   timeMax: 30,
   proteinTypes: new Set(),
   bulkOnly: false,
+  likedOnly: false,
 };
+
+// Favorites — persisted locally in the browser (per device), keyed by recipe id.
+const LIKES_KEY = "cutkeep.liked";
+function loadLikes() {
+  try { return new Set(JSON.parse(localStorage.getItem(LIKES_KEY)) || []); } catch { return new Set(); }
+}
+function saveLikes() {
+  try { localStorage.setItem(LIKES_KEY, JSON.stringify([...LIKED])); } catch {}
+}
+const LIKED = loadLikes();
+const isLiked = (r) => LIKED.has(r.id);
+function toggleLike(id) {
+  if (LIKED.has(id)) LIKED.delete(id);
+  else LIKED.add(id);
+  saveLikes();
+}
 
 const els = {
   grid: document.getElementById("grid"),
@@ -20,6 +37,8 @@ const els = {
   proteinMin: document.getElementById("proteinMin"),
   timeMax: document.getElementById("timeMax"),
   bulkOnly: document.getElementById("bulkOnly"),
+  likedOnly: document.getElementById("likedOnly"),
+  likedCount: document.getElementById("likedCount"),
   proteinChips: document.getElementById("proteinChips"),
   kcalVal: document.getElementById("kcalVal"),
   proteinVal: document.getElementById("proteinVal"),
@@ -107,6 +126,7 @@ function matches(r) {
   if (r.activeMinutes != null && r.activeMinutes > state.timeMax) return false;
   if (state.proteinTypes.size && !state.proteinTypes.has(r.protein_type)) return false;
   if (state.bulkOnly && (r.keepsDays || 0) < 3) return false;
+  if (state.likedOnly && !isLiked(r)) return false;
   if (state.search) {
     const hay = (r.title + " " + (r.tags || []).join(" ") + " " + (r.ingredients || []).join(" ")).toLowerCase();
     if (!hay.includes(state.search.toLowerCase())) return false;
@@ -134,6 +154,37 @@ function cardMedia(r) {
   return `<div class="card-emoji">${r.emoji}</div>`;
 }
 
+function heartButton(r, big = false) {
+  const liked = isLiked(r);
+  const cls = `heart${big ? " heart-lg" : ""}${liked ? " liked" : ""}`;
+  const label = liked ? "Remove from liked" : "Add to liked";
+  return `<button class="${cls}" data-like="${r.id}" title="${label}" aria-label="${label}" aria-pressed="${liked}">${liked ? "♥" : "♡"}</button>`;
+}
+
+// Repaint a heart button to match the current liked state (in place).
+function paintHeart(btn, r) {
+  const liked = isLiked(r);
+  btn.classList.toggle("liked", liked);
+  btn.textContent = liked ? "♥" : "♡";
+  btn.setAttribute("aria-pressed", liked);
+  const label = liked ? "Remove from liked" : "Add to liked";
+  btn.title = label;
+  btn.setAttribute("aria-label", label);
+}
+
+// Toggle a like from any heart button, repaint it, and run onToggle to keep
+// counts/views in sync. Stops the click from bubbling to a card/modal underneath.
+function wireHeart(scope, r, onToggle) {
+  const btn = scope.querySelector(`[data-like="${r.id}"]`);
+  if (!btn) return;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleLike(r.id);
+    paintHeart(btn, r);
+    onToggle();
+  });
+}
+
 function portionGrams(r) {
   if (typeof estimateBreakdown !== "function" || !r.ingredients) return null;
   const b = estimateBreakdown(r.ingredients, r.servings || 1);
@@ -149,6 +200,7 @@ function card(r) {
   const pg = portionGrams(r);
   const m = dispMacros(r);
   el.innerHTML = `
+    ${heartButton(r)}
     ${cardMedia(r)}
     <div class="card-body">
       <div class="card-title">${r.title} ${badge}</div>
@@ -165,19 +217,31 @@ function card(r) {
         ${fit}
       </div>
     </div>`;
+  // Heart toggles the like in place; in the liked-only view, re-render so an
+  // un-liked card drops out. Otherwise just refresh the liked count.
+  wireHeart(el, r, () => { state.likedOnly ? render() : updateLikedCount(); });
   el.addEventListener("click", () => openModal(r));
   return el;
+}
+
+function updateLikedCount() {
+  const n = ALL.filter(isLiked).length;
+  if (els.likedCount) els.likedCount.textContent = n ? `(${n})` : "";
 }
 
 function render() {
   els.kcalVal.textContent = `≤ ${state.kcalMax}`;
   els.proteinVal.textContent = `≥ ${state.proteinMin}g`;
   els.timeVal.textContent = `≤ ${state.timeMax} min`;
+  updateLikedCount();
 
   const list = ALL.filter(matches).sort((a, b) => (b.protein || 0) - (a.protein || 0));
   els.grid.innerHTML = "";
   if (!list.length) {
-    els.grid.innerHTML = `<div class="empty">No recipes match these filters. Try loosening them or import a new one.</div>`;
+    const msg = state.likedOnly
+      ? "No liked recipes yet. Tap the ♡ on any recipe to add it here."
+      : "No recipes match these filters. Try loosening them or import a new one.";
+    els.grid.innerHTML = `<div class="empty">${msg}</div>`;
   } else {
     list.forEach((r) => els.grid.appendChild(card(r)));
   }
@@ -235,6 +299,7 @@ function openModal(r) {
     : "";
   els.modalCard.innerHTML = `
     <button class="close-x" data-close>×</button>
+    ${heartButton(r, true)}
     ${photo}
     <h2>${r.title}</h2>
     <div class="serving-line">Makes <strong>${r.servings} portions</strong>${pg ? ` · <strong>${pg.approx ? "~" : ""}${pg.g} g per portion</strong> (batch ~${pg.g * r.servings} g)` : ""} · keeps ${r.keepsDays} days${r.totalMinutes ? ` · ${r.totalMinutes} min total` : ""}${r.activeMinutes ? ` (${r.activeMinutes} active)` : ""}</div>
@@ -255,6 +320,8 @@ function openModal(r) {
     <ol>${(r.steps || []).map((s) => `<li>${typeof gramifyText === "function" ? gramifyText(s) : s}</li>`).join("")}</ol>
     ${r.notes ? `<div class="note">💡 ${r.notes}</div>` : ""}
   `;
+  // Modal heart repaints itself (via wireHeart) and re-renders the grid behind.
+  wireHeart(els.modalCard, r, () => render());
   els.modal.hidden = false;
 }
 
@@ -311,6 +378,7 @@ els.kcalMax.addEventListener("input", (e) => { state.kcalMax = +e.target.value; 
 els.proteinMin.addEventListener("input", (e) => { state.proteinMin = +e.target.value; render(); });
 els.timeMax.addEventListener("input", (e) => { state.timeMax = +e.target.value; render(); });
 els.bulkOnly.addEventListener("change", (e) => { state.bulkOnly = e.target.checked; render(); });
+els.likedOnly.addEventListener("change", (e) => { state.likedOnly = e.target.checked; render(); });
 els.importBtn.addEventListener("click", doImport);
 els.importUrl.addEventListener("keydown", (e) => { if (e.key === "Enter") doImport(); });
 
